@@ -4,24 +4,6 @@ set(COSMOS_MICRO_AGENT_INCLUDED TRUE)
 get_filename_component(COSMOS_SOURCE_MICRO_AGENT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 
 if(DEFINED COSMOS_SOURCE)
-    # Auto-initialize thirdparty — micro-agent needs localzlib from thirdparty.
-    # (json11 is now bundled in kernel, but zlib remains in thirdparty until issue #86.)
-    if(NOT EXISTS "${COSMOS_SOURCE}/thirdparty/CMakeLists.txt")
-        message(STATUS "cosmosv5: initializing thirdparty submodule...")
-        execute_process(
-            COMMAND git submodule update --init thirdparty
-            WORKING_DIRECTORY "${COSMOS_SOURCE}"
-            RESULT_VARIABLE _cosmos_git_result
-        )
-        if(NOT _cosmos_git_result EQUAL 0)
-            message(FATAL_ERROR
-                "cosmosv5: thirdparty submodule is not initialized and auto-init failed.\n"
-                "Run from the cosmosv5 workspace root:\n"
-                "  git submodule update --init thirdparty")
-        endif()
-    endif()
-    include(${COSMOS_SOURCE}/thirdparty/cmake/use_cosmos_from_source.cmake)
-
     # Auto-initialize kernel
     if(NOT EXISTS "${COSMOS_SOURCE}/kernel/CMakeLists.txt")
         message(STATUS "cosmosv5: initializing kernel submodule...")
@@ -43,6 +25,14 @@ else()
 endif()
 
 message("Using COSMOS micro-agent from " ${COSMOS_SOURCE_MICRO_AGENT})
+
+# Build zlib from micro-agent's bundled copy (issue #86).
+# Sets COSMOS_ZLIB_INCLUDE_DIR so thirdparty/png can find zlib.h when included by modules+.
+if(NOT TARGET localzlib)
+    add_subdirectory(${COSMOS_SOURCE_MICRO_AGENT}/libraries/zlib ${CMAKE_BINARY_DIR}/micro-agent/libraries/zlib)
+endif()
+set(COSMOS_ZLIB_INCLUDE_DIR "${COSMOS_SOURCE_MICRO_AGENT}/libraries/zlib" CACHE PATH "zlib include directory (for libpng)")
+include_directories(${COSMOS_SOURCE_MICRO_AGENT}/libraries/zlib)
 
 include_directories(${COSMOS_SOURCE_MICRO_AGENT}/libraries)
 include_directories(${COSMOS_SOURCE_MICRO_AGENT}/libraries/device)
