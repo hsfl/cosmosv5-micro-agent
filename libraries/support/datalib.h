@@ -433,10 +433,12 @@ int32_t set_cosmosnodes(bool create_flag=false);
 //! \brief Retrieve the COSMOS nodes directory path into \p result.
 int32_t get_cosmosnodes(string &result, bool create_flag=false);
 
-//! \brief Return the absolute path to a specific node's directory.
-//! \param node        Node name. \param create_flag Create if missing; default false.
+//! \brief Return the absolute path to a specific node's directory, nested under
+//! that node's realm (<realmdir>/nodes/<node>) rather than a global node tree.
+//! \param realm       Realm name. \param node Node name.
+//! \param create_flag Create if missing; default false.
 //! \return Absolute node directory path, or "" on failure.
-string get_nodedir(string node, bool create_flag=false);
+string get_nodedir(string realm, string node, bool create_flag=false);
 
 //! \brief Return the COSMOS nodes directory path as a string.
 string get_cosmosnodes(bool create_flag=false);
@@ -482,10 +484,10 @@ int32_t data_move_file(filestruc file, string location="outgoing", bool compress
 int32_t data_move_file(string path, string location="outgoing", bool compress="true");
 
 //! \brief Return the MJD of the last archived day for a node.
-double findlastday(string node);
+double findlastday(string realm, string node);
 
 //! \brief Return the MJD of the first archived day for a node.
-double findfirstday(string node);
+double findfirstday(string realm, string node);
 
 //! \brief Return the current working directory as a string.
 const string data_getcwd();

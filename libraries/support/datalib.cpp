@@ -1897,17 +1897,35 @@ int32_t get_cosmosnodes(string &result, bool create_flag)
 
 //! Get Current Node Directory
 /*! Get the internal variable that points to where node files are
-             * stored for the current Node.
+             * stored for the current Node, nested under that Node's Realm
+             * (<realmdir>/nodes/<node>) rather than a global node tree.
+             * \param realm Name of the Node's Realm
              * \param node Name of current Node
              * \param create_flag Whether or not to create node directory if it doesn't already exist.
              * \return Pointer to character string containing path to Node, otherwise nullptr.
             */
-string get_nodedir(string node, bool create_flag)
+string get_nodedir(string realm, string node, bool create_flag)
 {
     nodedir.clear();
-    if (!set_cosmosnodes(create_flag))
+    string realmdir_local = get_realmdir(realm, create_flag);
+    if (!realmdir_local.empty())
     {
-        nodedir = cosmosnodes + "/" + node;
+        string nodesdir = realmdir_local + "/nodes";
+
+        // if the realm's nodes folder does not exist
+        if (!data_isdir(nodesdir))
+        {
+            if (!create_flag)
+            {
+                return (nodedir);
+            }
+            if (COSMOS_MKDIR(nodesdir.c_str(),00777) != 0)
+            {
+                return (nodedir);
+            }
+        }
+
+        nodedir = nodesdir + "/" + node;
 
         // if the node folder does not exist
         if (!data_isdir(nodedir))
@@ -2217,7 +2235,7 @@ int32_t data_load_archive(string node, string agent, double mjd, string type, ve
              * day for which data is available. This is then stored in lastday.
              \return MJD of last day in archive, or zero.
             */
-double findlastday(string name)
+double findlastday(string realm, string name)
 {
     DIR *jdp;
     struct dirent *td;
@@ -2227,7 +2245,7 @@ double findlastday(string name)
     time_t mytime;
 
     year = jday = 0;
-    if (get_nodedir(name).size())
+    if (get_nodedir(realm, name).size())
     {
         sprintf(dtemp,"%s/data/soh", nodedir.c_str());
         if ((jdp=opendir(dtemp))!=nullptr)
@@ -2292,7 +2310,7 @@ double findlastday(string name)
              * day for which data is available. This is then stored in firstday.
              \return MJD of last day in archive.
             */
-double findfirstday(string name)
+double findfirstday(string realm, string name)
 {
     DIR *jdp;
     struct dirent *td;
@@ -2301,7 +2319,7 @@ double findfirstday(string name)
     struct tm mytm;
     time_t mytime;
 
-    if (get_nodedir(name).size())
+    if (get_nodedir(realm, name).size())
     {
         year = jday = 9000;
         sprintf(dtemp,"%s/data/soh", nodedir.c_str());
