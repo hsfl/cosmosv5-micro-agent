@@ -2125,6 +2125,102 @@ string get_realmdir(string realm, bool create_flag)
     return (realmdir);
 }
 
+//! Make a directory and any missing parents
+//! \return True if the directory exists afterwards.
+static bool data_mkpath(string path)
+{
+    if (path.empty() || data_isdir(path))
+    {
+        return !path.empty();
+    }
+    size_t slash = path.find_last_of('/');
+    if (slash != string::npos && slash > 0 && !data_mkpath(path.substr(0, slash)))
+    {
+        return false;
+    }
+    return COSMOS_MKDIR(path.c_str(), 00777) == 0 || errno == EEXIST;
+}
+
+// Half a millisecond [days], added before splitting a time into day and second, so a
+// time a hair under a boundary (from MJD rounding) lands in the day and second it names
+static const double ARCHIVE_ROUND = .0005 / 86400.;
+
+//! Get COSMOS Archive Directory
+/*! The archive holds a realm's stored telemetry, events and science data, by node:
+ * <archive>/<realm>/<node>/<kind>/<yyyy>/<ddd>. It is COSMOSARCHIVE if set,
+ * otherwise <cosmosroot>/archive.
+    \param create_flag Create directory if not already present.
+ * \return Path, or empty if not found.
+*/
+string get_cosmosarchive(bool create_flag)
+{
+    string archive;
+    char *troot = getenv("COSMOSARCHIVE");
+    if (troot != nullptr)
+    {
+        archive = troot;
+    }
+    else
+    {
+        string root;
+        if (get_cosmosroot(root, create_flag) < 0 || root.empty())
+        {
+            return "";
+        }
+        archive = root + "/archive";
+    }
+    if (data_isdir(archive) || (create_flag && data_mkpath(archive)))
+    {
+        return archive;
+    }
+    return "";
+}
+
+//! Get an Archive Day Directory
+/*! \param realm Realm name.
+ * \param node Node name.
+ * \param kind Archive kind: "telemetry" (telemetry and events) or "data" (science data).
+ * \param mjd Time within the day (UTC).
+    \param create_flag Create the path if not already present.
+ * \return <archive>/<realm>/<node>/<kind>/<yyyy>/<ddd>, or empty if absent or not created.
+*/
+string get_archivedir(string realm, string node, string kind, double mjd, bool create_flag)
+{
+    string archive = get_cosmosarchive(create_flag);
+    if (archive.empty())
+    {
+        return "";
+    }
+    int32_t year, month;
+    double day, doy;
+    mjd2ymd(mjd + ARCHIVE_ROUND, year, month, day, doy);
+    char daypath[32];
+    snprintf(daypath, sizeof(daypath), "%04d/%03d", year, static_cast<int>(doy));
+    string path = archive + "/" + realm + "/" + node + "/" + kind + "/" + daypath;
+    if (data_isdir(path) || (create_flag && data_mkpath(path)))
+    {
+        return path;
+    }
+    return "";
+}
+
+//! Archive File Name
+/*! \param prefix Kind of file: "telemetry", "event", "passive", "active".
+ * \param mjd Time of the file's first record (UTC).
+ * \param ext Extension, without the dot.
+ * \return <prefix>_<yyyydddhhmmss>.<ext>
+*/
+string archive_name(string prefix, double mjd, string ext)
+{
+    int32_t year, month;
+    double day, doy;
+    mjd2ymd(mjd + ARCHIVE_ROUND, year, month, day, doy);
+    int32_t seconds = std::min(86399, static_cast<int32_t>((doy - floor(doy)) * 86400.));
+    char stamp[64];
+    snprintf(stamp, sizeof(stamp), "%04d%03d%02d%02d%02d", year, static_cast<int>(doy), seconds / 3600, (seconds / 60) % 60, seconds % 60);
+    return prefix + "_" + stamp + "." + ext;
+}
+
 //! Move data file - filestruc version.
 /*! Move files previously created using ::file_struc to their final location, optionally
  * compressing with gzip. The routine will move the file specified in filestruc to {node}/{dstlocation}/{agent}.
@@ -3221,3 +3317,56 @@ void GITTEST::f()	{
 }
 
 //! @}
+
+ArchiveLines::ArchiveLines(string realm, string node, string prefix)
+    : realm(realm), node(node), prefix(prefix)
+{
+}
+
+ArchiveLines::ArchiveLines(ArchiveLines &&other) noexcept
+    : realm(std::move(other.realm)), node(std::move(other.node)), prefix(std::move(other.prefix)),
+      path(std::move(other.path)), fp(other.fp), hourend(other.hourend)
+{
+    other.fp = nullptr;
+}
+
+ArchiveLines::~ArchiveLines()
+{
+    Close();
+}
+
+int32_t ArchiveLines::Write(double mjd, const string &line)
+{
+    if (fp == nullptr || mjd + ARCHIVE_ROUND >= hourend)
+    {
+        Close();
+        string dir = get_archivedir(realm, node, "telemetry", mjd, true);
+        if (dir.empty())
+        {
+            return DATA_ERROR_ARCHIVE;
+        }
+        path = dir + "/" + archive_name(prefix, mjd, "json");
+        fp = fopen(path.c_str(), "w");
+        if (fp == nullptr)
+        {
+            path.clear();
+            return -errno;
+        }
+        hourend = (floor((mjd + ARCHIVE_ROUND) * 24.) + 1.) / 24.;
+    }
+    if (fputs(line.c_str(), fp) == EOF || fputc('\n', fp) == EOF)
+    {
+        return -errno;
+    }
+    return 0;
+}
+
+void ArchiveLines::Close()
+{
+    if (fp != nullptr)
+    {
+        fclose(fp);
+        fp = nullptr;
+    }
+    path.clear();
+}

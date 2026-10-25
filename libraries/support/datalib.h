@@ -460,6 +460,23 @@ string get_cosmosrealms(bool create_flag=false);
 //! \return Absolute realm directory path.
 string get_realmdir(string realm, bool create_flag=false);
 
+//! \brief Return the COSMOS archive root: $COSMOSARCHIVE, or <cosmosroot>/archive.
+//! \param create_flag Create if missing; default false.
+//! \return Absolute archive root path, or "" on failure.
+string get_cosmosarchive(bool create_flag=false);
+
+//! \brief Return an archive day directory, <archive>/<realm>/<node>/<kind>/<yyyy>/<ddd>.
+//! \param realm Realm name. \param node Node name.
+//! \param kind  "telemetry" or "data". \param mjd Time within the day (UTC).
+//! \param create_flag Create the whole path if missing; default false.
+//! \return Absolute directory path, or "" on failure.
+string get_archivedir(string realm, string node, string kind, double mjd, bool create_flag=false);
+
+//! \brief Return an archive file name, <prefix>_<yyyydddhhmmss>.<ext>.
+//! \param prefix e.g. "telemetry", "event", "passive", "active".
+//! \param mjd    Time of the file's first record (UTC). \param ext Extension without the dot.
+string archive_name(string prefix, double mjd, string ext);
+
 //! \brief Load archived log records for an agent between two UTC values.
 //! \param node     Node name. \param agent Agent name.
 //! \param utcbegin Start of range (MJD, inclusive). \param utcend End of range (MJD, inclusive).
@@ -530,6 +547,32 @@ public:
 private:
 
     FILE* fout;
+};
+
+//! Writes JSON lines into the archive, one file per hour of record time:
+//! <archive>/<realm>/<node>/telemetry/<yyyy>/<ddd>/<prefix>_<yyyydddhhmmss>.json, named by
+//! the file's first record. A file of the same name is replaced.
+class ArchiveLines
+{
+public:
+    ArchiveLines(string realm, string node, string prefix);
+    ArchiveLines(const ArchiveLines &) = delete;
+    ArchiveLines &operator=(const ArchiveLines &) = delete;
+    ArchiveLines(ArchiveLines &&other) noexcept;
+    ~ArchiveLines();
+    //! Write one line; starts a new file when mjd is past the current file's hour.
+    //! \return Zero, or negative error.
+    int32_t Write(double mjd, const string &line);
+    void Close();
+
+    string realm;
+    string node;
+    string prefix;
+    //! Path of the open file, or empty
+    string path;
+private:
+    FILE *fp = nullptr;
+    double hourend = 0.;
 };
 
 //class NodeList
