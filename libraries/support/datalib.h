@@ -477,6 +477,30 @@ string get_archivedir(string realm, string node, string kind, double mjd, bool c
 //! \param mjd    Time of the file's first record (UTC). \param ext Extension without the dot.
 string archive_name(string prefix, double mjd, string ext);
 
+//! One archive file, from its name <prefix>_<yyyydddhhmmss>.<ext>
+struct archivefile
+{
+    string kind;
+    string prefix;
+    //! Time of the file's first record or frame (UTC)
+    double utc = 0.;
+    off_t size = 0;
+    string path;
+};
+
+//! \brief Parse an archive file name, <prefix>_<yyyydddhhmmss>.<ext>.
+//! \return True if the name has that form.
+bool archive_parse_name(const string &name, string &prefix, double &utc);
+
+//! \brief List the archive files of one kind that may hold records in a time window, by time.
+//! A telemetry file holds up to an hour from its name's time; a data file (listed by its
+//! .hdr) up to 10 minutes.
+//! \param realm Realm name. \param node Node name. \param kind "telemetry" or "data".
+//! \param utcbegin Start of the window (UTC). \param utcend End of the window (UTC).
+//! \param prefix Only files with this prefix (e.g. "event"); empty for all.
+//! \return The files, sorted by time.
+vector<archivefile> archive_list(string realm, string node, string kind, double utcbegin, double utcend, string prefix="");
+
 //! \brief Load archived log records for an agent between two UTC values.
 //! \param node     Node name. \param agent Agent name.
 //! \param utcbegin Start of range (MJD, inclusive). \param utcend End of range (MJD, inclusive).

@@ -2221,6 +2221,72 @@ string archive_name(string prefix, double mjd, string ext)
     return prefix + "_" + stamp + "." + ext;
 }
 
+bool archive_parse_name(const string &name, string &prefix, double &utc)
+{
+    size_t under = name.rfind('_');
+    size_t dot = name.rfind('.');
+    if (under == string::npos || dot == string::npos || dot != under + 14)
+    {
+        return false;
+    }
+    string stamp = name.substr(under + 1, 13);
+    for (char c : stamp)
+    {
+        if (c < '0' || c > '9')
+        {
+            return false;
+        }
+    }
+    int32_t year = stoi(stamp.substr(0, 4));
+    int32_t doy = stoi(stamp.substr(4, 3));
+    int32_t hour = stoi(stamp.substr(7, 2));
+    int32_t minute = stoi(stamp.substr(9, 2));
+    int32_t second = stoi(stamp.substr(11, 2));
+    prefix = name.substr(0, under);
+    utc = cal2mjd(year, 1.) + (doy - 1) + (hour + (minute + second / 60.) / 60.) / 24.;
+    return true;
+}
+
+vector<archivefile> archive_list(string realm, string node, string kind, double utcbegin, double utcend, string prefix)
+{
+    vector<archivefile> files;
+    double span = kind == "telemetry" ? 1./24. : 10./1440.;
+    for (double day = floor(utcbegin - span); day <= floor(utcend); day += 1.)
+    {
+        string dir = get_archivedir(realm, node, kind, day);
+        if (dir.empty())
+        {
+            continue;
+        }
+        for (filestruc &tf : data_list_files(dir))
+        {
+            archivefile af;
+            if (!archive_parse_name(tf.name, af.prefix, af.utc))
+            {
+                continue;
+            }
+            if (!prefix.empty() && af.prefix != prefix)
+            {
+                continue;
+            }
+            // Data is listed by header; its .img follows from the name
+            if (kind == "data" && tf.name.substr(tf.name.size() - 4) != ".hdr")
+            {
+                continue;
+            }
+            if (af.utc <= utcend && af.utc + span > utcbegin)
+            {
+                af.kind = kind;
+                af.size = tf.size;
+                af.path = tf.path;
+                files.push_back(af);
+            }
+        }
+    }
+    sort(files.begin(), files.end(), [](const archivefile &a, const archivefile &b) { return a.utc < b.utc; });
+    return files;
+}
+
 //! Move data file - filestruc version.
 /*! Move files previously created using ::file_struc to their final location, optionally
  * compressing with gzip. The routine will move the file specified in filestruc to {node}/{dstlocation}/{agent}.
